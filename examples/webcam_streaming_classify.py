@@ -13,7 +13,7 @@ import argparse
 import time
 
 from edgetpu.detection.engine import DetectionEngine
-
+import edgetpu.classification.engine
 
 # Parameters
 AUTH_USERNAME = os.environ.get('AUTH_USERNAME', 'pi')
@@ -101,6 +101,8 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Pragma', 'no-cache')
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
+            font = cv2.FONT_HERSHEY_SIMPLEX
+
             try:
                 stream_video = io.BytesIO()
                 stream_tpu = io.BytesIO()
@@ -112,28 +114,29 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
                         break
 
                     prepimg = color_image[:, :, ::-1].copy()
-                    prepimg = Image.fromarray(prepimg)
+                    prepimg = cv2.resize(prepimg, (width, height))
+                    prepimg = np.reshape(prepimg, (width * height * 3, ))
 
                     start_ms = time.time()
-                    results = engine.ClassifyWithInputTensor(input, top_k=1)
+                    results = engine.ClassifyWithInputTensor(prepimg, top_k=1)
                     elapsed_ms = time.time() - start_ms
 
                     if results:
-                        print("%s %.2f\n%.2fms" % (
-                            labels[results[0][0]], results[0][1], elapsed_ms*1000.0))
+                        caption = "%s %.2f\n%.2fms" % (
+                            labels[results[0][0]], results[0][1], elapsed_ms*1000.0)
+                    else:
+                        caption = "..."
 
+                    imgRGB=cv2.cvtColor(color_image,cv2.COLOR_BGR2RGB)
+                    cv2.putText(imgRGB, caption, (0, 30), font, 1, (255,255,255), 2, cv2.LINE_AA)
 
-                    ret, img = cap.read()
-                    if not ret:
-                        break
-                    imgRGB=cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
                     jpg = Image.fromarray(imgRGB)
                     jpg.save(stream_video,'JPEG')
 
                     stream_video.truncate()
                     stream_video.seek(0)
- 
                     self.wfile.write(b'--FRAME\r\n')
+                    # self.wfile.write(b"--jpgboundary")
                     self.send_header('Content-Type', 'image/jpeg')
                     self.send_header('Content-Length', len(stream_video.getvalue()))
                     self.end_headers()
@@ -168,7 +171,7 @@ if __name__ == '__main__':
         pairs = (l.strip().split(maxsplit=1) for l in f.readlines())
         labels = dict((int(k), v) for k, v in pairs)
 
-    engine = DetectionEngine(args.model)
+    engine = edgetpu.classification.engine.ClassificationEngine(args.model)
     cap = cv2.VideoCapture(USBCAMNO)
     cap.set(cv2.CAP_PROP_FPS, FRAMERATE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, RESOLUTION_X)

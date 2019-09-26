@@ -39,6 +39,8 @@ RUN curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash - \
 #python libraries
 RUN python3 -m pip install supervisor \
     && python3 -m pip install picamera python-periphery \
+    && python3 -m pip install tornado \
+    && python3 -m pip install Send2Trash \
     && python3 -m pip install jupyter cython jupyterlab ipywebrtc opencv-python \
 	&& python3 -m pip install google-auth oauthlib imutils
 
